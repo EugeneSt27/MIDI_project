@@ -1,0 +1,25 @@
+midi-project/
+├── data/
+│   ├── raw/
+│   ├── annotated/
+│   └── csv/
+│
+├── src/
+│   ├── midi/
+│   │   ├── io.py
+│   │   ├── extract.py
+│   │   └── annotate.py
+│   │
+│   ├── analysis/
+│   │   ├── structure.py
+│   │   ├── harmony.py
+│   │   ├── rhythm.py
+│   │   ├── features.py
+│   │   └── development.py
+│   │
+│   └── knowledge/
+│       └── graph.py
+│
+├── main.py
+├── requirements.txt
+└── README.md
