@@ -1,98 +1,87 @@
-# src/analysis/development.py
-
 import numpy as np
-from math import sqrt
+from typing import List, Dict, Tuple
+from src.config import WEIGHTS
 
 
-# -----------------------------
-# ВСПОМОГАТЕЛЬНОЕ
-# -----------------------------
+# ---------------------------------------
+# SIMILARITY
+# ---------------------------------------
 
-def numeric_vector(feat):
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     """
-    Превращает признаки фразы в числовой вектор
+    Standard cosine similarity between two vectors
     """
-    return np.array([
-        feat["mean_pitch"],
-        feat["pitch_std"],
-        feat["pitch_class_entropy"],
-        feat["mean_onset_density"],
-    ], dtype=float)
+    denom = (np.linalg.norm(a) * np.linalg.norm(b))
+    if denom == 0:
+        return 0.0
+    return float(np.dot(a, b) / denom)
 
 
-def euclidean(a, b):
-    return sqrt(((a - b) ** 2).sum())
+# ---------------------------------------
+# FIND PARENTS (INHERITANCE)
+# ---------------------------------------
 
-
-def chord_similarity(h1, h2):
+def find_parents(
+    feature_vectors: Dict[int, np.ndarray],
+    similarity_threshold: float = 0.75,
+    max_parents: int = 3,
+    weights: Dict[str, float] = None
+) -> List[Tuple[int, int, float]]:
     """
-    Jaccard similarity по множеству аккордов
+    feature_vectors:
+        {segment_id: feature_vector}
+
+    weights: {'pitch': 1, 'chord': 1.5, 'rhythm': 2, 'struct': 1}
+
+    return:
+        list of (parent_id, child_id, similarity)
     """
-    s1 = set(h1.keys())
-    s2 = set(h2.keys())
+    if weights is None:
+        weights = WEIGHTS
 
-    if not s1 and not s2:
-        return 1.0
+    edges = []
 
-    return len(s1 & s2) / len(s1 | s2)
+    segment_ids = sorted(feature_vectors.keys())
 
+    for i, child_id in enumerate(segment_ids):
+        child_vec = feature_vectors[child_id]
 
-# -----------------------------
-# ОСНОВНАЯ ЛОГИКА
-# -----------------------------
+        # Разделим вектор на компоненты
+        child_pitch = child_vec[:12]
+        child_chord = child_vec[12:27]
+        child_rhythm = child_vec[27:36]  # density + onset_hist
+        child_struct = child_vec[36:]
 
-def compare_phrases(
-    features,
-    dist_repeat=5.0,
-    dist_variation=12.0,
-    chord_sim_threshold=0.6
-):
-    """
-    Возвращает список отношений между фразами
-    """
+        similarities = []
 
-    relations = []
-    phrase_ids = sorted(features.keys())
+        # compare ONLY with previous segments
+        for parent_id in segment_ids[:i]:
+            parent_vec = feature_vectors[parent_id]
+            parent_pitch = parent_vec[:12]
+            parent_chord = parent_vec[12:27]
+            parent_rhythm = parent_vec[27:36]
+            parent_struct = parent_vec[36:]
 
-    vectors = {
-        pid: numeric_vector(features[pid])
-        for pid in phrase_ids
-    }
+            # Вычислим отдельные схожести
+            sim_pitch = cosine_similarity(child_pitch, parent_pitch)
+            sim_chord = cosine_similarity(child_chord, parent_chord)
+            sim_rhythm = cosine_similarity(child_rhythm, parent_rhythm)
+            sim_struct = cosine_similarity(child_struct, parent_struct)
 
-    for i, a in enumerate(phrase_ids):
-        for b in phrase_ids[i + 1:]:
-            fa = features[a]
-            fb = features[b]
+            # Комбинированная схожесть с весами
+            combined_sim = (
+                sim_pitch * weights['pitch'] +
+                sim_chord * weights['chord'] +
+                sim_rhythm * weights['rhythm'] +
+                sim_struct * weights['struct']
+            ) / sum(weights.values())
 
-            # расстояние по числам
-            d = euclidean(vectors[a], vectors[b])
+            if combined_sim >= similarity_threshold:
+                similarities.append((parent_id, combined_sim))
 
-            # сходство гармонии
-            ch_sim = chord_similarity(
-                fa["chord_histogram"],
-                fb["chord_histogram"]
-            )
+        # keep top-N parents
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        for parent_id, sim in similarities[:max_parents]:
+            edges.append((parent_id, child_id, sim))
 
-            # -----------------------------
-            # ПРАВИЛА
-            # -----------------------------
-
-            if d < dist_repeat and ch_sim > 0.8:
-                rel = "repeat"
-
-            elif d < dist_variation and ch_sim > chord_sim_threshold:
-                rel = "variation"
-
-            else:
-                rel = "contrast"
-
-            relations.append({
-                "from": a,
-                "to": b,
-                "distance": round(d, 3),
-                "chord_similarity": round(ch_sim, 3),
-                "relation": rel
-            })
-
-    return relations
-
+    return edges
