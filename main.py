@@ -1,9 +1,6 @@
-import os
 import mido
-import pretty_midi
-import numpy as np
-
-# main.py
+#import pretty_midi
+#import numpy as np
 
 from pathlib import Path
 import mido
