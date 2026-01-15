@@ -100,76 +100,77 @@ def analyze_graph(G: nx.DiGraph) -> dict:
 
 def draw_beautiful_graph(
     G: nx.DiGraph,
+    features: Dict[int, np.ndarray],
     title: str = "Beautiful Musical Knowledge Graph",
     save_path: str | None = None
 ):
     """
-    Draws graph using Plotly for interactive, beautiful visualization.
-    Nodes colored by in-degree, sized by out-degree, edges by weight.
+    Draws graph using Matplotlib for static, beautiful visualization.
+    Nodes colored by phrase ID, sized by rhythm density, edges filtered >0.95 with categorical labels.
     """
-    # Positions using spring layout
-    pos = nx.spring_layout(G, seed=42, k=1.0, iterations=100)
     
-    # Node data
-    node_x = [pos[n][0] for n in G.nodes]
-    node_y = [pos[n][1] for n in G.nodes]
-    node_text = [f"Phrase {n}<br>In-degree: {G.in_degree(n)}<br>Out-degree: {G.out_degree(n)}" for n in G.nodes]
-    node_color = [G.in_degree(n) for n in G.nodes]  # Color by in-degree
-    node_size = [G.out_degree(n) * 20 + 20 for n in G.nodes]  # Size by out-degree
+    plt.figure(figsize=(14, 10))
     
-    # Edge data
-    edge_x = []
-    edge_y = []
-    edge_text = []
-    for u, v, d in G.edges(data=True):
-        x0, y0 = pos[u]
-        x1, y1 = pos[v]
-        edge_x.extend([x0, x1, None])
-        edge_y.extend([y0, y1, None])
-        edge_text.append(f"Weight: {d['weight']:.2f}")
-    
-    # Create figure
-    fig = go.Figure()
-    
-    # Edges
-    fig.add_trace(go.Scatter(
-        x=edge_x, y=edge_y,
-        line=dict(width=2, color='gray'),
-        hoverinfo='text',
-        text=edge_text,
-        mode='lines',
-        name='Edges'
-    ))
-    
-    # Nodes
-    fig.add_trace(go.Scatter(
-        x=node_x, y=node_y,
-        mode='markers+text',
-        text=[f"S{n}" for n in G.nodes],
-        textposition="top center",
-        hoverinfo='text',
-        textfont=dict(size=12),
-        marker=dict(
-            size=node_size,
-            color=node_color,
-            colorscale='Viridis',
-            showscale=True,
-            colorbar=dict(title="In-degree"),
-            line=dict(width=2, color='black')
-        ),
-        name='Nodes'
-    ))
-    
-    # Layout
-    fig.update_layout(
-        title=title,
-        showlegend=False,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        plot_bgcolor='white'
-    )
-    
-    if save_path:
-        fig.write_html(save_path)  # Save as interactive HTML
+    if nx.is_directed_acyclic_graph(G):  # Проверяем, DAG ли
+        pos = nx.kamada_kawai_layout(G)  # Hierarchical для дерева inheritance (лучше для DAG)
     else:
-        fig.show()  # Show in browser
+        pos = nx.circular_layout(G)  # Circular для общего случая
+    
+    # ----- Nodes -----
+    node_colors = list(G.nodes)
+    node_sizes = []
+
+    for n in G.nodes:
+        density = features.get(n, np.array([0]))[27]  # rhythm density
+        node_sizes.append(max(300, density * 1200))
+
+    nx.draw_networkx_nodes(
+        G, pos,
+        node_color=node_colors,
+        node_size=node_sizes,
+        cmap=plt.cm.tab10,
+        alpha=0.85
+    )
+
+    # ----- Edges -----
+    edge_colors = []
+    edge_labels = {}
+
+    for u, v, d in G.edges(data=True):
+        w = d['weight']
+        if w >= 0.97:
+            edge_colors.append('red')
+            edge_labels[(u, v)] = 'strong'
+        elif w >= 0.85:
+            edge_colors.append('orange')
+            edge_labels[(u, v)] = 'variation'
+        else:
+            edge_colors.append('gray')
+            edge_labels[(u, v)] = 'weak'
+
+    nx.draw_networkx_edges(
+        G, pos,
+        edge_color=edge_colors,
+        width=2,
+        arrows=True,
+        arrowsize=20
+    )
+
+    nx.draw_networkx_labels(G, pos, font_size=12)
+    nx.draw_networkx_edge_labels(G, pos, edge_labels, font_size=9)
+
+    plt.title(title, fontsize=16)
+    plt.axis('off')
+
+    # Legend
+    legend_elements = [
+        plt.Line2D([0], [0], color='red', lw=2, label='Strong similarity'),
+        plt.Line2D([0], [0], color='orange', lw=2, label='Variation'),
+        plt.Line2D([0], [0], color='gray', lw=2, label='Weak inheritance'),
+    ]
+    plt.legend(handles=legend_elements, loc='upper right')
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    else:
+        plt.show()

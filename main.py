@@ -109,12 +109,12 @@ def analyze_and_visualize(phrases, features, midi_name):
         pickle.dump((phrases, features), f)  # сохраняем phrases и features
     print(f"Data saved to {data_path}")
     
-    draw_graph(G, title=f"{GRAPH_TITLE_PREFIX} {midi_name}", save_path=str(graph_path))
-    print(f"Graph saved to {graph_path}")
+    # draw_graph(G, title=f"{GRAPH_TITLE_PREFIX} {midi_name}", save_path=str(graph_path))
+    #print(f"Graph saved to {graph_path}")
     
-    # Beautiful interactive graph
-    beautiful_graph_path = Path("results/better_graphs") / f"{midi_name}_beautiful_graph.html"
-    draw_beautiful_graph(G, title=f"Beautiful {GRAPH_TITLE_PREFIX} {midi_name}", save_path=str(beautiful_graph_path))
+    # Beautiful static graph
+    beautiful_graph_path = Path("results/better_graphs") / f"{midi_name}_beautiful_graph.png"
+    draw_beautiful_graph(G, features, title=f"Beautiful {GRAPH_TITLE_PREFIX} {midi_name}", save_path=str(beautiful_graph_path))
     print(f"Beautiful graph saved to {beautiful_graph_path}")
 
 if __name__ == "__main__":

@@ -3,4 +3,5 @@ pretty_midi
 numpy
 networkx
 matplotlib
+scipy
 plotly
