@@ -5,13 +5,17 @@
 SIMILARITY_THRESHOLD = 0.75  # Порог схожести для inheritance
 MAX_PARENTS = 3  # Максимальное число родителей для сегмента
 
-# Весы для многомерного сходства (pitch, chord, rhythm, struct)
+# Весы для многомерного сходства
 WEIGHTS = {
-    'pitch': 1.0,    # Вес для pitch features
-    'chord': 1.5,    # Вес для harmony features
-    'rhythm': 2.0,   # Вес для rhythm features
-    'struct': 1.0    # Вес для structural features
+    "rel_pitch": 0.30,
+    "rhythm_hist": 0.25,
+    "chord_feat": 0.20,
+    "abs_pitch": 0.10,
+    "density": 0.05,
+    "harm_complex": 0.05,
+    "note_count": 0.05
 }
+
 
 # Другие параметры
 BARS_PER_PHRASE = 4  # Число баров в фразе (для structure.py)

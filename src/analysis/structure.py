@@ -20,9 +20,9 @@ def beats_to_bars(beats, ts=(4,4)):
         bars[bar].append(b)
     return bars
 
-def bars_to_phrases(bars, bars_per_phrase=4):
-    phrases = defaultdict(list)
-    for bar in bars:
-        phrase = (bar - 1) // bars_per_phrase + 1
-        phrases[phrase].append(bar)
-    return phrases
+#def bars_to_phrases(bars, bars_per_phrase=4):
+#    phrases = defaultdict(list)
+#    for bar in bars:
+#        phrase = (bar - 1) // bars_per_phrase + 1
+#        phrases[phrase].append(bar)
+#    return phrases

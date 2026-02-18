@@ -1,29 +1,62 @@
-
 import numpy as np
-from collections import Counter
+
 
 # ---------------------------------------
-# PITCH / HARMONY FEATURES
+# UTILS
 # ---------------------------------------
 
-def pitch_class_histogram(notes, chord_root=0):
-    """
-    notes: [(start, end, midi_note, velocity), ...]
-    chord_root: int 0-11 (C=0, C#=1, ..., B=11)
-    return: np.array shape (12,) - relative to chord_root
-    """
+PCN = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
 
-    pcs = [((n - chord_root) % 12) for (_, _, n, _) in notes]
+
+def notes_in_segment(notes, segment_start, segment_end):
+    """
+    Filter notes that overlap with a segment.
+    """
+    return [
+        n for n in notes
+        if n[0] < segment_end and n[1] > segment_start
+    ]
+
+
+# ---------------------------------------
+# PITCH FEATURES
+# ---------------------------------------
+
+def absolute_pitch_class_histogram(notes):
+    """
+    Absolute pitch-class histogram (no harmonic context).
+    """
     hist = np.zeros(12)
 
-    for pc in pcs:
-        hist[pc] += 1
+    for (_, _, pitch, _) in notes:
+        hist[pitch % 12] += 1
 
     if hist.sum() > 0:
-        hist /= hist.sum()  # normalize
+        hist /= hist.sum()
 
     return hist
 
+
+def relative_pitch_class_histogram(notes, chord_root):
+    """
+    Pitch-class histogram relative to chord root.
+    Encodes functional role of material.
+    """
+    hist = np.zeros(12)
+
+    for (_, _, pitch, _) in notes:
+        pc = (pitch - chord_root) % 12
+        hist[pc] += 1
+
+    if hist.sum() > 0:
+        hist /= hist.sum()
+
+    return hist
+
+
+# ---------------------------------------
+# HARMONY FEATURES
+# ---------------------------------------
 
 def chord_root_feature(bar_chord):
     """
@@ -31,14 +64,14 @@ def chord_root_feature(bar_chord):
     return: one-hot root (12,) + mode (3,)
     """
 
-    roots = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
     root_vec = np.zeros(12)
     mode_vec = np.zeros(3)  # maj / min / other
 
     if bar_chord:
         root, mode = bar_chord.split(":")
-        if root in roots:
-            root_vec[roots.index(root)] = 1
+
+        if root in PCN:
+            root_vec[PCN.index(root)] = 1
 
         if mode == "maj":
             mode_vec[0] = 1
@@ -50,30 +83,35 @@ def chord_root_feature(bar_chord):
     return np.concatenate([root_vec, mode_vec])
 
 
+def harmonic_complexity_feature(bar_chord):
+    """
+    Rough indicator of harmonic stability / ambiguity.
+    """
+    if bar_chord is None:
+        return np.array([0.0])
+
+    if bar_chord.endswith("pcset") or bar_chord == "N":
+        return np.array([1.0])
+
+    return np.array([0.0])
+
+
 # ---------------------------------------
 # RHYTHM FEATURES
 # ---------------------------------------
 
 def rhythm_density(notes, segment_start, segment_end):
     """
-    notes: all notes
-    segment_start / end: tick boundaries
+    Note density inside a segment.
     """
-
-    seg_notes = [
-        n for n in notes
-        if segment_start <= n[0] < segment_end
-    ]
-
     duration = max(1, segment_end - segment_start)
-    return np.array([len(seg_notes) / duration])
+    return np.array([len(notes) / duration])
 
 
 def onset_position_histogram(notes, segment_start, segment_end, bins=8):
     """
-    Histogram of note onsets inside segment
+    Histogram of note onset positions inside a segment.
     """
-
     hist = np.zeros(bins)
     length = segment_end - segment_start
 
@@ -81,10 +119,9 @@ def onset_position_histogram(notes, segment_start, segment_end, bins=8):
         return hist
 
     for (st, _, _, _) in notes:
-        if segment_start <= st < segment_end:
-            pos = (st - segment_start) / length
-            idx = min(int(pos * bins), bins - 1)
-            hist[idx] += 1
+        pos = (st - segment_start) / length
+        idx = min(int(pos * bins), bins - 1)
+        hist[idx] += 1
 
     if hist.sum() > 0:
         hist /= hist.sum()
@@ -92,27 +129,11 @@ def onset_position_histogram(notes, segment_start, segment_end, bins=8):
     return hist
 
 
-# ---------------------------------------
-# STRUCTURAL FEATURES
-# ---------------------------------------
-
-def structural_position_features(
-    bar_index,
-    phrase_index,
-    bars_per_phrase=4
-):
+def note_count_feature(notes):
     """
-    Encode position inside phrase
+    Normalized note count (very rough material activity measure).
     """
-
-    pos_in_phrase = (bar_index - 1) % bars_per_phrase
-    norm_pos = pos_in_phrase / bars_per_phrase
-
-    return np.array([
-        bar_index,
-        phrase_index,
-        norm_pos
-    ])
+    return np.array([len(notes)])
 
 
 # ---------------------------------------
@@ -123,35 +144,45 @@ def build_feature_vector(
     notes,
     segment_start,
     segment_end,
-    bar_chord,
-    bar_index,
-    phrase_index
+    bar_chord
 ):
     """
-    Assemble all features into ONE vector
+    Build feature vector for a single BAR (segment).
     """
-    # Извлекаем chord_root из bar_chord
+
+    # restrict notes to this bar
+    seg_notes = notes_in_segment(notes, segment_start, segment_end)
+
+    # extract chord root
     chord_root = 0  # default C
     if bar_chord:
         root, _ = bar_chord.split(":")
-        roots = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
-        if root in roots:
-            chord_root = roots.index(root)
+        if root in PCN:
+            chord_root = PCN.index(root)
 
-    pitch = pitch_class_histogram(notes, chord_root)  # передаем chord_root
-    chord = chord_root_feature(bar_chord)
-    density = rhythm_density(notes, segment_start, segment_end)
+    # pitch features
+    abs_pitch = absolute_pitch_class_histogram(seg_notes)
+    rel_pitch = relative_pitch_class_histogram(seg_notes, chord_root)
+
+    # harmony features
+    chord_feat = chord_root_feature(bar_chord)
+    harm_complex = harmonic_complexity_feature(bar_chord)
+
+    # rhythm features
+    density = rhythm_density(seg_notes, segment_start, segment_end)
     rhythm_hist = onset_position_histogram(
-        notes, segment_start, segment_end
+        seg_notes, segment_start, segment_end
     )
-    structure = structural_position_features(
-        bar_index, phrase_index
-    )
+
+    # material activity
+    note_count = note_count_feature(seg_notes)
 
     return np.concatenate([
-        pitch,
-        chord,
-        density,
-        rhythm_hist,
-        structure
+        rel_pitch,        # 12
+        abs_pitch,        # 12
+        chord_feat,       # 15
+        harm_complex,     # 1
+        density,          # 1
+        rhythm_hist,      # 8
+        note_count        # 1
     ])

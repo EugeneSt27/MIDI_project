@@ -1,6 +1,8 @@
 mido
 pretty_midi
 numpy
+pandas
+scikit-learn
 networkx
 matplotlib
 scipy
