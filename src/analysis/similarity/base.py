@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Dict, Tuple
 
+
 # -----------------------------
 # COSINE
 # -----------------------------
@@ -18,23 +19,25 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 def split_feature_vector(vec: np.ndarray) -> Dict[str, np.ndarray]:
     """
-    Assumes feature vector layout:
+    Feature vector layout (must match build_feature_vector in features.py):
 
-    [0:12]   absolute pitch class histogram
-    [12:24]  relative pitch class histogram
-    [24:39]  chord root (12) + mode (3)
-    [39:40]  rhythm density
-    [40:48]  onset position histogram (8)
+    [0:12]   rel_pitch   — pitch class histogram relative to chord root
+    [12:24]  abs_pitch   — absolute pitch class histogram
+    [24:39]  chord_feat  — chord root one-hot (12) + mode (3)
+    [39:40]  harm_complex
+    [40:41]  density
+    [41:49]  rhythm_hist — onset position histogram (8 bins)
+    [49:50]  note_count
     """
 
     return {
-        "rel_pitch": vec[0:12],
-        "abs_pitch": vec[12:24],
-        "chord_feat": vec[24:39],
+        "rel_pitch":    vec[0:12],
+        "abs_pitch":    vec[12:24],
+        "chord_feat":   vec[24:39],
         "harm_complex": vec[39:40],
-        "density": vec[40:41],
-        "rhythm_hist": vec[41:49],
-        "note_count": vec[49:50]
+        "density":      vec[40:41],
+        "rhythm_hist":  vec[41:49],
+        "note_count":   vec[49:50],
     }
 
 
@@ -48,7 +51,8 @@ def semantic_similarity(
     weights: Dict[str, float]
 ) -> Dict[str, float]:
     """
-    Returns similarity per component + total
+    Returns per-component cosine similarity + weighted total.
+    Only keys present in `weights` are computed.
     """
 
     a_parts = split_feature_vector(a)
