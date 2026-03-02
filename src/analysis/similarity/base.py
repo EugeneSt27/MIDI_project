@@ -1,10 +1,26 @@
+"""
+base.py — функции сравнения баров.
+
+Два режима:
+
+1. profile_similarity(profile_a, profile_b)
+   Принимает словари {"harmony": ..., "melody": ..., "rhythm": ...}
+   Возвращает словарь сходств по каждому компоненту.
+   Это основной режим — без весов, каждое измерение независимо.
+
+2. semantic_similarity(vec_a, vec_b, weights)
+   Принимает плоские векторы (48 dims) и словарь весов.
+   Оставлен для обратной совместимости с graph_inheritance.py и similarity_matrix.py.
+   Layout плоского вектора: harmony(14) + melody(24) + rhythm(10).
+"""
+
 import numpy as np
-from typing import Dict, Tuple
+from typing import Dict
 
 
-# -----------------------------
+# ---------------------------------------
 # COSINE
-# -----------------------------
+# ---------------------------------------
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     denom = np.linalg.norm(a) * np.linalg.norm(b)
@@ -13,48 +29,68 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
-# -----------------------------
-# FEATURE SPLITTING
-# -----------------------------
+# ---------------------------------------
+# PROFILE-BASED SIMILARITY (основной)
+# ---------------------------------------
 
-def split_feature_vector(vec: np.ndarray) -> Dict[str, np.ndarray]:
+def profile_similarity(
+    profile_a: Dict[str, np.ndarray],
+    profile_b: Dict[str, np.ndarray],
+) -> Dict[str, float]:
     """
-    Feature vector layout (must match build_feature_vector in features.py):
+    Сравнивает два профиля бара по каждому компоненту отдельно.
 
-    [0:12]   rel_pitch   — pitch class histogram relative to chord root
-    [12:24]  abs_pitch   — absolute pitch class histogram
-    [24:39]  chord_feat  — chord root one-hot (12) + mode (3)
-    [39:40]  harm_complex
-    [40:41]  density
-    [41:49]  rhythm_hist — onset position histogram (8 bins)
-    [49:50]  note_count
+    Возвращает:
+        {
+            "harmony": float,   # 0..1
+            "melody":  float,   # 0..1
+            "rhythm":  float,   # 0..1
+        }
+
+    Никаких весов — каждое измерение независимо.
+    Это позволяет находить паттерны типа:
+        harmony=0.9, melody=0.3, rhythm=0.9  →  "перемелодизация"
+        harmony=0.3, melody=0.9, rhythm=0.9  →  "перегармонизация"
     """
-
     return {
-        "rel_pitch":    vec[0:12],
-        "abs_pitch":    vec[12:24],
-        "chord_feat":   vec[24:39],
-        "harm_complex": vec[39:40],
-        "density":      vec[40:41],
-        "rhythm_hist":  vec[41:49],
-        "note_count":   vec[49:50],
+        key: cosine_similarity(profile_a[key], profile_b[key])
+        for key in profile_a
+        if key in profile_b
     }
 
 
-# -----------------------------
-# SEMANTIC SIMILARITY
-# -----------------------------
+# ---------------------------------------
+# FLAT VECTOR SPLITTING (для совместимости)
+# ---------------------------------------
+
+def split_feature_vector(vec: np.ndarray) -> Dict[str, np.ndarray]:
+    """
+    Разбивает плоский вектор (48 dims) на компоненты.
+    Layout: harmony(14) + melody(24) + rhythm(10)
+    """
+    return {
+        "harmony": vec[0:14],
+        "melody":  vec[14:38],
+        "rhythm":  vec[38:48],
+    }
+
+
+# ---------------------------------------
+# WEIGHTED SIMILARITY (для совместимости)
+# ---------------------------------------
 
 def semantic_similarity(
     a: np.ndarray,
     b: np.ndarray,
-    weights: Dict[str, float]
+    weights: Dict[str, float],
 ) -> Dict[str, float]:
     """
-    Returns per-component cosine similarity + weighted total.
-    Only keys present in `weights` are computed.
-    """
+    Взвешенное сходство по плоским векторам.
+    Оставлен для совместимости с graph_inheritance.py и similarity_matrix.py.
 
+    Если weights содержит "harmony"/"melody"/"rhythm" — используются они.
+    Ключ "total" добавляется автоматически.
+    """
     a_parts = split_feature_vector(a)
     b_parts = split_feature_vector(b)
 
@@ -63,10 +99,11 @@ def semantic_similarity(
     weight_sum = 0.0
 
     for key, w in weights.items():
-        sim = cosine_similarity(a_parts[key], b_parts[key])
-        sims[key] = sim
-        total += sim * w
-        weight_sum += w
+        if key in a_parts:
+            sim = cosine_similarity(a_parts[key], b_parts[key])
+            sims[key] = sim
+            total += sim * w
+            weight_sum += w
 
     sims["total"] = total / weight_sum if weight_sum > 0 else 0.0
     return sims

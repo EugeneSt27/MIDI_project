@@ -1,20 +1,11 @@
 # src/config.py
 # Параметры для анализа MIDI и построения графа знаний
 
-# Параметры для find_parents (сравнение сегментов)
-SIMILARITY_THRESHOLD = 0.75  # Порог схожести для inheritance
-MAX_PARENTS = 3  # Максимальное число родителей для сегмента
 
-# Весы для многомерного сходства
-WEIGHTS = {
-    "rel_pitch": 0.30,
-    "rhythm_hist": 0.25,
-    "chord_feat": 0.20,
-    "abs_pitch": 0.10,
-    "density": 0.05,
-    "harm_complex": 0.05,
-    "note_count": 0.05
-}
+WEIGHTS = {"harmony": 1.0, "melody": 1.0, "rhythm": 1.0}
+SIMILARITY_THRESHOLD = 0.75
+MAX_PARENTS = 3
+BARS_PER_PHRASE = 4
 
 
 # Другие параметры
