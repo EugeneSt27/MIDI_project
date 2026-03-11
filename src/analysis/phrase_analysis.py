@@ -305,8 +305,7 @@ def _label_phrases(
 
     pattern_str = "".join(labels)
     return labels, pattern_str
-
-
+    
 # -------------------------------------------------------
 # SUMMARY REPORT
 # -------------------------------------------------------

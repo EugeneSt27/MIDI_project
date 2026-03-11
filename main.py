@@ -130,7 +130,9 @@ if __name__ == "__main__":
 
         # Graph + metrics
         edges = find_inheritance_edges(feature_vectors=feature_vectors, weights=WEIGHTS)
-        metrics = evaluate_track(similarity_matrix=matrices["total"], graph_edges=edges)
+        metrics = evaluate_track(similarity_matrix=matrices["total"],
+         graph_edges=edges,
+         phrase_analysis=phrase_analysis)
         metrics.update({
             "track": midi_file.stem, "num_bars": len(bar_ids),
             "num_sections": structure["num_sections"], "num_phrases": structure["num_phrases"],
