@@ -28,6 +28,24 @@ from analysis.phrase_analysis import recursive_structure_analysis, print_structu
 from config import WEIGHTS
 
 
+def plot_harmony_histogram(data_dict, out_path):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = {"CLASSIC": "#4CAF50", "MODERN": "#2196F3", "AIVA": "#F44336"}
+    
+    for category, vals in data_dict.items():
+        if vals:
+            ax.hist(vals, bins=50, alpha=0.5, label=category, color=colors.get(category, "gray"), density=True)
+            
+    ax.set_title("Distribution of Harmony SSM Off-Diagonal Values")
+    ax.set_xlabel("Cosine Similarity")
+    ax.set_ylabel("Density")
+    ax.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 def process_midi(path):
     mid = mido.MidiFile(path)
     notes = extract_notes(mid)
@@ -36,12 +54,13 @@ def process_midi(path):
     ts = time_signatures(mid.tracks)[0][1]
     beats = ticks_to_beats(notes, mid.ticks_per_beat)
     bars = beats_to_bars(beats, ts)
-    bar_chords = harmony_by_bar(notes=notes, bars=bars, ticks_per_beat=mid.ticks_per_beat)
+    bar_chords = harmony_by_bar(notes=notes, bars=bars, ticks_per_beat=mid.ticks_per_beat, ts=ts)
 
     bar_profiles, feature_vectors = {}, {}
-    for bar_index, bar_beats in bars.items():
-        s = bar_beats[0] * mid.ticks_per_beat
-        e = (bar_beats[-1] + 1) * mid.ticks_per_beat
+    beats_per_bar = ts[0] * (4 / ts[1]) 
+    for bar_index in sorted(bars.keys()):
+        s = (bar_index - 1) * beats_per_bar * mid.ticks_per_beat
+        e = bar_index * beats_per_bar * mid.ticks_per_beat
         chord = bar_chords.get(bar_index, "")
         bar_profiles[bar_index] = build_bar_profile(notes, s, e, chord)
         feature_vectors[bar_index] = build_feature_vector(notes, s, e, chord)
@@ -85,8 +104,9 @@ if __name__ == "__main__":
         print(f"No MIDI files in {data_dir}"); sys.exit(1)
 
     results = []
+    harmony_off_diagonals = {"CLASSIC": [], "MODERN": [], "AIVA": []}
     for midi_file in midi_files:
-        print(f"\n{'─'*50}\nProcessing: {midi_file.name}")
+        print(f"\n{'-'*50}\nProcessing: {midi_file.name}")
         try:
             bar_profiles, feature_vectors = process_midi(midi_file)
         except Exception as e:
@@ -114,6 +134,13 @@ if __name__ == "__main__":
             comp_mat[comp] = mat
         save_component_ssm(comp_mat, f"Component SSMs: {midi_file.stem}",
                            f"results/ssm/{midi_file.stem}_ssm_components.png")
+                           
+        # Collect off-diagonals for the thesis histogram
+        mask = ~np.eye(n, dtype=bool)
+        h_vals = comp_mat["harmony"][mask]
+        category = next((c for c in ["CLASSIC", "MODERN", "AIVA"] if midi_file.name.startswith(c)), None)
+        if category:
+            harmony_off_diagonals[category].extend(h_vals.tolist())
 
         # Novelty + structure
         structure = analyze_structure(sim_matrix=matrices["total"], bar_ids=bar_ids,
@@ -142,6 +169,8 @@ if __name__ == "__main__":
 
     if not results:
         print("No results."); sys.exit(1)
+        
+    plot_harmony_histogram(harmony_off_diagonals, "results/harmony_distribution.png")
 
     df = pd.DataFrame(results)
     df.to_csv("results/experiment_metrics.csv", index=False)

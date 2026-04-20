@@ -52,4 +52,4 @@ def extract_notes(mid):
                 if active[msg.note]:
                     st, vel = active[msg.note].pop()
                     notes.append((st, t, msg.note, vel))
-    return notes
+    return sorted(notes, key=lambda x: x[0])

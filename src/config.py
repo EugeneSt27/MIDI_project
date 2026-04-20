@@ -2,7 +2,7 @@
 # Параметры для анализа MIDI и построения графа знаний
 
 
-WEIGHTS = {"harmony": 1.0, "melody": 1.0, "rhythm": 1.0}
+WEIGHTS = {"harmony": 1.0, "melody": 1.0, "rhythm": 0.0}
 SIMILARITY_THRESHOLD = 0.75
 MAX_PARENTS = 3
 BARS_PER_PHRASE = 4

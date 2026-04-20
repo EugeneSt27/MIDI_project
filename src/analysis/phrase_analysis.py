@@ -336,4 +336,4 @@ def print_structure_report(analysis: Dict, track_name: str = ""):
                     pos_summary.append(
                         f"pos{pos}:[H={pat['harmony']},M={pat['melody']},R={pat['rhythm']}]"
                     )
-                print(f"    phrase {i}→{j}: {ct:20s}  {' '.join(pos_summary)}")
+                print(f"    phrase {i}->{j}: {ct:20s}  {' '.join(pos_summary)}")

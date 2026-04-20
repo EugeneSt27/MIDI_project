@@ -22,17 +22,18 @@ def chord_from_pitches(pitches):
     return f"{PCN[min(pcs)]}:pcset"
 
 
-def harmony_by_bar(notes, bars, ticks_per_beat):
+def harmony_by_bar(notes, bars, ticks_per_beat, ts=(4, 4)):
     """
     notes: [(start_tick, end_tick, pitch, velocity)]
     bars: {bar_idx: [beat_indices]}
     returns: {bar_idx: chord_label}
-    """
     bar_chords = {}
+    beats_per_bar = ts[0] * (4 / ts[1])
+    last_chord = "N"
 
-    for bar, beats in bars.items():
-        bar_start_tick = beats[0] * ticks_per_beat
-        bar_end_tick = (beats[-1] + 1) * ticks_per_beat
+    for bar, _ in bars.items():
+        bar_start_tick = (bar - 1) * beats_per_bar * ticks_per_beat
+        bar_end_tick = bar * beats_per_bar * ticks_per_beat
 
         pitches = [
             pitch
@@ -40,6 +41,14 @@ def harmony_by_bar(notes, bars, ticks_per_beat):
             if st < bar_end_tick and en > bar_start_tick
         ]
 
-        bar_chords[bar] = chord_from_pitches(pitches)
+        chord = chord_from_pitches(pitches)
+        
+        # Fallback to the previous chord if the current bar has no recognized pitches ("N")
+        # to avoid empty bar artifacts in SSM matrices.
+        if chord == "N" and last_chord != "N":
+            bar_chords[bar] = last_chord
+        else:
+            bar_chords[bar] = chord
+            last_chord = chord
 
     return bar_chords
