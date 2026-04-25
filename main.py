@@ -29,14 +29,20 @@ from config import WEIGHTS
 
 
 def plot_harmony_histogram(data_dict, out_path):
+    from scipy.stats import gaussian_kde
     fig, ax = plt.subplots(figsize=(10, 6))
     colors = {"CLASSIC": "#4CAF50", "MODERN": "#2196F3", "AIVA": "#F44336"}
     
+    x_grid = np.linspace(-0.1, 1.1, 500)
+    
     for category, vals in data_dict.items():
         if vals:
-            ax.hist(vals, bins=50, alpha=0.5, label=category, color=colors.get(category, "gray"), density=True)
+            kde = gaussian_kde(vals)
+            y_vals = kde(x_grid)
+            ax.plot(x_grid, y_vals, label=category, color=colors.get(category, "gray"), linewidth=2)
+            ax.fill_between(x_grid, y_vals, alpha=0.3, color=colors.get(category, "gray"))
             
-    ax.set_title("Distribution of Harmony SSM Off-Diagonal Values")
+    ax.set_title("Distribution of Harmony SSM Off-Diagonal Values (KDE)")
     ax.set_xlabel("Cosine Similarity")
     ax.set_ylabel("Density")
     ax.legend()
@@ -62,8 +68,15 @@ def process_midi(path):
         s = (bar_index - 1) * beats_per_bar * mid.ticks_per_beat
         e = bar_index * beats_per_bar * mid.ticks_per_beat
         chord = bar_chords.get(bar_index, "")
-        bar_profiles[bar_index] = build_bar_profile(notes, s, e, chord)
-        feature_vectors[bar_index] = build_feature_vector(notes, s, e, chord)
+        
+        # Получаем профиль 1 раз
+        profile = build_bar_profile(notes, s, e, chord)
+        bar_profiles[bar_index] = profile
+        
+        # Сплющиваем для совместимости со старым кодом
+        feature_vectors[bar_index] = np.concatenate([
+            profile["harmony"], profile["melody"], profile["rhythm"]
+        ])
     return bar_profiles, feature_vectors
 
 
@@ -118,29 +131,30 @@ if __name__ == "__main__":
         bar_ids = sorted(feature_vectors.keys())
         print(f"  Bars: {len(bar_ids)}")
 
-        # SSM total
+        # SSM total and components (векторизованно)
         matrices = compute_similarity_matrix(feature_vectors=feature_vectors, weights=WEIGHTS)
         save_ssm_heatmap(matrices["total"], f"SSM: {midi_file.stem}",
                          f"results/ssm/{midi_file.stem}_ssm_total.png")
 
-        # SSM per component
-        n = len(bar_ids)
-        comp_mat = {}
-        for comp in ["harmony", "melody", "rhythm"]:
-            mat = np.zeros((n, n))
-            for i, bi in enumerate(bar_ids):
-                for j, bj in enumerate(bar_ids):
-                    mat[i, j] = cosine_similarity(bar_profiles[bi][comp], bar_profiles[bj][comp])
-            comp_mat[comp] = mat
-        save_component_ssm(comp_mat, f"Component SSMs: {midi_file.stem}",
+        # SSM per component (выведено напрямую из compute_similarity_matrix)
+        save_component_ssm(matrices, f"Component SSMs: {midi_file.stem}",
                            f"results/ssm/{midi_file.stem}_ssm_components.png")
                            
         # Collect off-diagonals for the thesis histogram
+        n = len(bar_ids)
         mask = ~np.eye(n, dtype=bool)
-        h_vals = comp_mat["harmony"][mask]
+        h_vals = matrices["harmony"][mask]
         category = next((c for c in ["CLASSIC", "MODERN", "AIVA"] if midi_file.name.startswith(c)), None)
         if category:
             harmony_off_diagonals[category].extend(h_vals.tolist())
+            
+        # Calculate harmony_entropy
+        if len(h_vals) > 0:
+            from scipy.stats import entropy
+            hist_counts, _ = np.histogram(h_vals, bins=10, range=(0, 1))
+            harmony_entropy = entropy(hist_counts)
+        else:
+            harmony_entropy = 0.0
 
         # Novelty + structure
         structure = analyze_structure(sim_matrix=matrices["total"], bar_ids=bar_ids,
@@ -160,10 +174,23 @@ if __name__ == "__main__":
         metrics = evaluate_track(similarity_matrix=matrices["total"],
          graph_edges=edges,
          phrase_analysis=phrase_analysis)
+         
+        phrase_pattern = phrase_analysis.get("level2", {}).get("section_pattern", "")
+        if len(phrase_pattern) > 0:
+            phrase_vocabulary_richness = len(set(phrase_pattern)) / len(phrase_pattern)
+        else:
+            phrase_vocabulary_richness = 0.0
+            
+        num_boundaries = max(0, len(structure["boundaries"]) - 2)
+        mean_boundaries_per_10_bars = (num_boundaries / len(bar_ids)) * 10.0 if len(bar_ids) > 0 else 0.0
+
         metrics.update({
             "track": midi_file.stem, "num_bars": len(bar_ids),
             "num_sections": structure["num_sections"], "num_phrases": structure["num_phrases"],
-            "phrase_pattern": phrase_analysis.get("level2", {}).get("section_pattern", ""),
+            "phrase_pattern": phrase_pattern,
+            "phrase_vocabulary_richness": phrase_vocabulary_richness,
+            "mean_boundaries_per_10_bars": mean_boundaries_per_10_bars,
+            "harmony_entropy": harmony_entropy,
         })
         results.append(metrics)
 
@@ -173,7 +200,16 @@ if __name__ == "__main__":
     plot_harmony_histogram(harmony_off_diagonals, "results/harmony_distribution.png")
 
     df = pd.DataFrame(results)
-    df.to_csv("results/experiment_metrics.csv", index=False)
+    out_csv = "results/experiment_metrics.csv"
+    try:
+        df.to_csv(out_csv, index=False)
+    except PermissionError:
+        import time
+        timestamp = int(time.time())
+        out_csv = f"results/experiment_metrics_{timestamp}.csv"
+        print(f"\n[!] WARNING: Could not write to experiment_metrics.csv (is it open in Excel?).")
+        print(f"[!] Saving to backup file: {out_csv}")
+        df.to_csv(out_csv, index=False)
     print(f"\n{'='*50}\nEXPERIMENT FINISHED")
-    cols = ["track", "num_bars", "num_sections", "phrase_pattern", "block_score", "structure_score"]
+    cols = ["track", "num_bars", "num_sections", "phrase_pattern", "phrase_vocabulary_richness", "mean_boundaries_per_10_bars", "harmony_entropy", "block_score"]
     print(df[[c for c in cols if c in df.columns]].to_string(index=False))

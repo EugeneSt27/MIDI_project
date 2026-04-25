@@ -27,6 +27,7 @@ def harmony_by_bar(notes, bars, ticks_per_beat, ts=(4, 4)):
     notes: [(start_tick, end_tick, pitch, velocity)]
     bars: {bar_idx: [beat_indices]}
     returns: {bar_idx: chord_label}
+    """
     bar_chords = {}
     beats_per_bar = ts[0] * (4 / ts[1])
     last_chord = "N"
