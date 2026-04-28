@@ -107,10 +107,66 @@ def save_component_ssm(component_matrices, title, out_path):
     plt.tight_layout(); plt.savefig(out_path, dpi=150); plt.close()
 
 
+def save_graph_plot(edges, bar_ids, title, out_path):
+    import networkx as nx
+    import numpy as np
+    
+    G = nx.DiGraph()
+    for b in bar_ids:
+        G.add_node(b)
+    
+    # Оставляем только самую сильную связь для каждого узла, чтобы граф не был "волосяным комом"
+    best_edges = {}
+    for p, c, w in edges:
+        if c not in best_edges or w > best_edges[c][2]:
+            best_edges[c] = (p, c, w)
+            
+    for p, c, w in best_edges.values():
+        G.add_edge(p, c, weight=w)
+        
+    fig, ax = plt.subplots(figsize=(12, 10))
+    
+    # Топологический layout (лучше показывает кластеры и темы)
+    pos = nx.spring_layout(G, k=0.4, iterations=100, seed=42)
+    
+    # Размер узла зависит от out-degree (сколько раз эта фраза была скопирована/наследована)
+    out_degrees = dict(G.out_degree())
+    node_sizes = [200 + out_degrees[n] * 150 for n in G.nodes()]
+    
+    # Цвет градиентом показывает хронологию: синий (начало трека) -> красный (конец)
+    node_colors = [n for n in G.nodes()]
+    
+    # Отрисовка
+    nodes = nx.draw_networkx_nodes(G, pos, ax=ax, node_size=node_sizes, 
+                                   node_color=node_colors, cmap="coolwarm", alpha=0.9, 
+                                   edgecolors="white", linewidths=1.5)
+                                   
+    nx.draw_networkx_labels(G, pos, ax=ax, font_size=8, font_weight="bold", font_color="#111111")
+    
+    edge_weights = [d['weight'] for u, v, d in G.edges(data=True)]
+    if edge_weights:
+        nx.draw_networkx_edges(G, pos, ax=ax, width=1.5,
+                               edge_color="#555555", alpha=0.5, 
+                               arrows=True, arrowsize=15,
+                               connectionstyle="arc3,rad=0.1")
+                               
+    ax.set_title(f"Hierarchy Graph: {title}", pad=20, fontsize=14, fontweight="bold")
+    ax.axis('off')
+    
+    # Добавляем хронологическую легенду (colorbar)
+    cbar = plt.colorbar(nodes, ax=ax, shrink=0.5, orientation="horizontal", pad=0.01)
+    cbar.set_label("Timeline (Bar Index)", fontsize=10)
+    
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+
+
 if __name__ == "__main__":
     data_dir = Path("data/raw")
     Path("results/ssm").mkdir(parents=True, exist_ok=True)
     Path("results/novelty").mkdir(parents=True, exist_ok=True)
+    Path("results/graphs").mkdir(parents=True, exist_ok=True)
 
     midi_files = sorted(list(data_dir.glob("*.mid")) + list(data_dir.glob("*.midi")))
     if not midi_files:
@@ -171,6 +227,8 @@ if __name__ == "__main__":
 
         # Graph + metrics
         edges = find_inheritance_edges(feature_vectors=feature_vectors, weights=WEIGHTS)
+        save_graph_plot(edges, bar_ids, midi_file.stem, f"results/graphs/{midi_file.stem}_graph.png")
+        
         metrics = evaluate_track(similarity_matrix=matrices["total"],
          graph_edges=edges,
          phrase_analysis=phrase_analysis)
